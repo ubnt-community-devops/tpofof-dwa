@@ -42,10 +42,10 @@ public class ResponseUtils {
 	}
 	
 	public JsonNode listData(ResultsSet<?> results) {
-		return listData(results.getResults(), results.getLimit(), results.getOffset());
+		return listData(results.getResults(), results.getLimit(), results.getOffset(), results.getTotal());
 	}
 	
-	public JsonNode listData(List<?> content, int limit, int offset) {
+	public JsonNode listData(List<?> content, int limit, int offset, long total) {
 		ObjectNode node = getMapper().createObjectNode();
 		node.put("type", "collection");
 		ArrayNode contentArray = getMapper().createArrayNode();
@@ -59,6 +59,7 @@ public class ResponseUtils {
 		pagingNode.put("hasMore", hasMore);
 		pagingNode.put("limit", limit);
 		pagingNode.put("offset", offset + limit);
+		pagingNode.put("total", total);
 		node.set("next", pagingNode);
 		return node;
 	}
@@ -67,6 +68,27 @@ public class ResponseUtils {
 		ObjectNode node = getMapper().createObjectNode();
 		node.put("type", "model");
 		node.set("model", json.toJsonNode(content));
+		return node;
+	}
+	
+	public JsonNode rawData(String fieldName, boolean data) {
+		ObjectNode node = getMapper().createObjectNode();
+		node.put("type", "raw");
+		node.put(fieldName, data);
+		return node;
+	}
+	
+	public JsonNode rawData(String fieldName, String data) {
+		ObjectNode node = getMapper().createObjectNode();
+		node.put("type", "data");
+		node.put("data", data);
+		return node;
+	}
+	
+	public JsonNode rawData(String fieldName, Integer data) {
+		ObjectNode node = getMapper().createObjectNode();
+		node.put("type", "data");
+		node.put("data", data);
 		return node;
 	}
 }

@@ -1,5 +1,13 @@
 package com.tpofof.dwa.resources;
 
+import static com.tpofof.dwa.resources.AuthRequestPermisionType.COUNT;
+import static com.tpofof.dwa.resources.AuthRequestPermisionType.CREATE;
+import static com.tpofof.dwa.resources.AuthRequestPermisionType.DELETE;
+import static com.tpofof.dwa.resources.AuthRequestPermisionType.READ;
+import static com.tpofof.dwa.resources.AuthRequestPermisionType.READ_ONE;
+import static com.tpofof.dwa.resources.AuthRequestPermisionType.UPDATE;
+import io.dropwizard.auth.Auth;
+
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
@@ -19,14 +27,16 @@ import com.tpofof.core.data.IPersistentModel;
 import com.tpofof.core.data.dao.ResultsSet;
 import com.tpofof.core.managers.IModelManager;
 import com.tpofof.core.utils.json.JsonUtils;
+import com.tpofof.dwa.auth.IAuthValidator;
 import com.tpofof.dwa.error.HttpCodeException;
 import com.tpofof.dwa.error.HttpInternalServerErrorException;
 import com.tpofof.dwa.error.HttpNotFoundException;
+import com.tpofof.dwa.error.HttpUnauthorizedException;
 import com.tpofof.dwa.utils.RequestUtils;
 import com.tpofof.dwa.utils.ResponseUtils;
 
 @Component
-public abstract class AbstractCrudResource<ModelT extends IPersistentModel<ModelT, PrimaryKeyT>, PrimaryKeyT, ManagerT extends IModelManager<ModelT, PrimaryKeyT>> {
+public abstract class AbstractAuthProtectedCrudResource<ModelT extends IPersistentModel<ModelT, PrimaryKeyT>, PrimaryKeyT, ManagerT extends IModelManager<ModelT, PrimaryKeyT>, AuthModelT> {
 
 	@Autowired private JsonUtils json;
 	@Autowired private ResponseUtils responseUtils;
@@ -34,7 +44,7 @@ public abstract class AbstractCrudResource<ModelT extends IPersistentModel<Model
 	private final ManagerT man;
 	private final Class<ModelT> modelClass;
 	
-	public AbstractCrudResource(ManagerT man, Class<ModelT> modelClass) {
+	public AbstractAuthProtectedCrudResource(ManagerT man, Class<ModelT> modelClass) {
 		this.man = man;
 		this.modelClass = modelClass;
 	}
@@ -42,18 +52,36 @@ public abstract class AbstractCrudResource<ModelT extends IPersistentModel<Model
 	protected final ManagerT getManager() {
 		return man;
 	}
+	
+	/**
+	 * If you do not want to implement this method then you should override {@link #validate(Object, Object, AuthRequestPermisionType)}.
+	 * @return Must not be {@code null}.
+	 */
+	protected abstract IAuthValidator<AuthModelT, PrimaryKeyT, AuthRequestPermisionType> getValidator();
+	
+	/**
+	 * @param authModel
+	 * @throws HttpUnauthorizedException
+	 */
+	protected void validate(AuthModelT authModel, PrimaryKeyT assetKey, AuthRequestPermisionType permType) throws HttpUnauthorizedException {
+		getValidator().validate(authModel, assetKey, permType);
+	}
 
 	@GET
-	public JsonNode findModels(@QueryParam("limit") Optional<Integer> limit,
+	public JsonNode findModels(@Auth AuthModelT authModel,
+			@QueryParam("limit") Optional<Integer> limit,
 			@QueryParam("offset") Optional<Integer> offset,
 			@Context HttpServletRequest request) throws HttpCodeException {
+		validate(authModel, null, READ);
 		ResultsSet<ModelT> results = man.find(requestUtils.limit(limit), requestUtils.offset(offset));
 		return responseUtils.success(responseUtils.listData(results));
 	}
 	
 	@Path("/count")
 	@GET
-	public JsonNode count(@Context HttpServletRequest request) throws HttpCodeException {
+	public JsonNode count(@Auth AuthModelT authModel,
+			@Context HttpServletRequest request) throws HttpCodeException {
+		validate(authModel, null, COUNT);
 		long count = man.count();
 		if (count < 0) {
 			throw new HttpInternalServerErrorException("Could not retrieve count for " + modelClass.getSimpleName());
@@ -63,8 +91,9 @@ public abstract class AbstractCrudResource<ModelT extends IPersistentModel<Model
 	
 	@Path("/{id}")
 	@GET
-	public JsonNode findModel(@PathParam("id") PrimaryKeyT id,
-			@Context HttpServletRequest request) throws HttpCodeException {
+	public JsonNode findModel(@Auth AuthModelT authModel,
+			@PathParam("id") PrimaryKeyT id, @Context HttpServletRequest request) throws HttpCodeException {
+		validate(authModel, id, READ_ONE);
 		ModelT model = man.find(id);
 		if (model == null) {
 			throw new HttpNotFoundException("Could not find " + modelClass.getSimpleName() + " with id " + id);
@@ -73,7 +102,9 @@ public abstract class AbstractCrudResource<ModelT extends IPersistentModel<Model
 	}
 	
 	@POST
-	public JsonNode post(ModelT model, @Context HttpServletRequest request) throws HttpCodeException {
+	public JsonNode post(@Auth AuthModelT authModel, ModelT model, 
+			@Context HttpServletRequest request) throws HttpCodeException {
+		validate(authModel, null, CREATE);
 		ModelT insertedModel = man.insert(model);
 		if (insertedModel == null) {
 			throw new HttpInternalServerErrorException("Could not create " + modelClass.getSimpleName());
@@ -83,11 +114,12 @@ public abstract class AbstractCrudResource<ModelT extends IPersistentModel<Model
 	
 	@Path("/{id}")
 	@PUT
-	public JsonNode update(@PathParam("id") String id, ModelT model,
-			@Context HttpServletRequest request) throws HttpCodeException {
+	public JsonNode update(@Auth AuthModelT authModel,
+			@PathParam("id") PrimaryKeyT id, ModelT model, @Context HttpServletRequest request) throws HttpCodeException {
 		if (!id.equals(model.getId())) {
 			throw new HttpInternalServerErrorException("Invalid Request: ID's do not match");
 		}
+		validate(authModel, id, UPDATE);
 		ModelT updatedModel = man.update(model);
 		if (updatedModel == null) {
 			throw new HttpInternalServerErrorException("Could not update the " + modelClass.getSimpleName());
@@ -97,8 +129,9 @@ public abstract class AbstractCrudResource<ModelT extends IPersistentModel<Model
 	
 	@Path("/{id}")
 	@DELETE
-	public JsonNode delete(@PathParam("id") PrimaryKeyT id,
-			@Context HttpServletRequest request) throws HttpCodeException {
+	public JsonNode delete(@Auth AuthModelT authModel,
+			@PathParam("id") PrimaryKeyT id, @Context HttpServletRequest request) throws HttpCodeException {
+		validate(authModel, id, DELETE);
 		if (!man.delete(id)) {
 			throw new HttpInternalServerErrorException("Failed to delete " + modelClass.getSimpleName() + " with id " + id);
 		}

@@ -1,9 +1,15 @@
 package com.tpofof.dwa;
 
+import java.util.EnumSet;
+
+import javax.servlet.DispatcherType;
+import javax.servlet.FilterRegistration;
+
 import io.dropwizard.Application;
 import io.dropwizard.setup.Bootstrap;
 import io.dropwizard.setup.Environment;
 
+import org.eclipse.jetty.servlets.CrossOriginFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.context.annotation.Scope;
@@ -38,5 +44,18 @@ public class DwaApp<ConfigType extends DwaConfiguration> extends Application<Con
 	@Override
 	public void run(ConfigType config, Environment env) throws Exception {
 		env.jersey().register(pingResource);
+	}
+	
+	protected void addCorsSupport(Environment env) {
+		/* CORS */
+		final FilterRegistration.Dynamic cors = env.servlets().addFilter("CORS", CrossOriginFilter.class);
+
+	    // Configure CORS parameters
+	    cors.setInitParameter("allowedOrigins", "*");
+	    cors.setInitParameter("allowedHeaders", "X-Requested-With,Content-Type,Accept,Origin");
+	    cors.setInitParameter("allowedMethods", "OPTIONS,GET,PUT,POST,DELETE,HEAD");
+
+	    // Add URL mapping
+	    cors.addMappingForUrlPatterns(EnumSet.allOf(DispatcherType.class), true, "/*");
 	}
 }
